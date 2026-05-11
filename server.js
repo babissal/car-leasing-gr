@@ -74,6 +74,84 @@ app.post('/api/scrape', async (req, res) => {
   })
 })
 
+app.get('/api/scrape-stream', async (req, res) => {
+  // Step 1: Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+
+  // Step 2: Flush headers immediately
+  res.flushHeaders()
+
+  // Step 3: Disable socket timeout for long-running scrapes
+  req.socket.setTimeout(0)
+
+  // Step 4: Parse query params
+  const dur = parseInt(req.query.duration, 10)
+  const adv = parseInt(req.query.advancePayment, 10) || 0
+
+  // Step 5: Validate duration
+  if (!VALID_DURATIONS.includes(dur)) {
+    res.write(`event: error\ndata: ${JSON.stringify({ error: 'Invalid duration. Must be 12, 24, 36, or 48.' })}\n\n`)
+    res.end()
+    return
+  }
+
+  // Step 6: Build params
+  const params = { duration: dur, advancePayment: adv }
+
+  // Step 7: Track abort state
+  let aborted = false
+  req.on('close', () => { aborted = true })
+
+  // Step 8: Declare accumulators
+  const allOffers = []
+  const errors = []
+
+  // Step 9: Write initial "running" events for all scrapers synchronously
+  for (const { name } of SCRAPERS) {
+    if (!res.writableEnded) {
+      res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'running', count: 0, error: null })}\n\n`)
+    }
+  }
+
+  // Step 10: Build scraper promises — each emits a progress event as it resolves
+  const scraperPromises = SCRAPERS.map(({ name, fn }) =>
+    fn(params)
+      .then(offers => {
+        const valid = offers.filter(o => validateOffer(o).valid)
+        allOffers.push(...valid)
+        if (!aborted && !res.writableEnded) {
+          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'done', count: valid.length, error: null })}\n\n`)
+        }
+      })
+      .catch(err => {
+        errors.push(`${name}: ${err.message || 'Unknown error'}`)
+        if (!aborted && !res.writableEnded) {
+          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'error', count: 0, error: err.message || 'Failed' })}\n\n`)
+        }
+      })
+  )
+
+  // Step 11: Wait for all scrapers to finish
+  await Promise.allSettled(scraperPromises)
+
+  // Step 12: Sort ascending by monthly price
+  allOffers.sort((a, b) => a.monthlyPrice - b.monthlyPrice)
+
+  // Step 13: Update store
+  store = { offers: allOffers, scrapedAt: new Date().toISOString(), errors }
+
+  // Step 14: Emit done event
+  if (!aborted && !res.writableEnded) {
+    res.write(`event: done\ndata: ${JSON.stringify({ offers: store.offers, scrapedAt: store.scrapedAt, errors: store.errors, count: store.offers.length })}\n\n`)
+  }
+
+  // Step 15: End the response unconditionally
+  res.end()
+})
+
 app.get('/api/offers', (req, res) => {
   res.json({ offers: store.offers, scrapedAt: store.scrapedAt, errors: store.errors, count: store.offers.length })
 })
