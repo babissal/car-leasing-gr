@@ -16,6 +16,11 @@
     tr:nth-child(even) { background: #fafafa; }
     button { padding: 8px 16px; cursor: pointer; }
     select { padding: 6px; }
+    #progress-list { font-size: 0.85em; color: #555; margin-bottom: 8px; min-height: 1.5em; }
+    #progress-list span { margin-right: 16px; }
+    .src-running { color: #888; }
+    .src-done    { color: #060; }
+    .src-error   { color: #c00; }
   </style>
 </head>
 <body>
@@ -34,6 +39,7 @@
 
   <div id="status"></div>
   <div id="meta"></div>
+  <div id="progress-list"></div>
 
   <table id="results">
     <thead>
