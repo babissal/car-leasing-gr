@@ -69,6 +69,18 @@
 - UI-06: Result count matching filters
 - UI-07: CO2 shown as "N/A" when unavailable
 
+**Plans:**
+
+**Wave 1**
+- `03-01` SSE Streaming Endpoint — `server.js` — ORCH-04
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- `03-02` Frontend EventSource Consumer — `public/app.js`, `public/index.html` — UI-02, UI-05, UI-06, UI-07
+
+**Cross-cutting constraints:**
+- Every `res.write()` in the SSE handler must be guarded by `!aborted && !res.writableEnded`
+- `es.close()` must be the first statement in the done event listener (prevents auto-reconnect loop)
+
 **Success Criteria:**
 1. While scraping, UI shows per-source status: "Scraping Instacar... ✓ (18 offers)" updating as each completes
 2. After scraping, UI shows "Last updated: 14:32" (or similar freshness indicator)
