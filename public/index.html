@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Car Leasing Aggregator</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1400px; margin: 0 auto; padding: 16px; }
+    .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    #status { margin-bottom: 8px; color: #c00; min-height: 1.2em; }
+    #meta { margin-bottom: 8px; color: #555; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+    th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; white-space: nowrap; }
+    th { background: #f4f4f4; cursor: pointer; user-select: none; }
+    th:hover { background: #e8e8e8; }
+    tr:nth-child(even) { background: #fafafa; }
+    button { padding: 8px 16px; cursor: pointer; }
+    select { padding: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Car Leasing Aggregator</h1>
+
+  <div class="filter-bar">
+    <label for="duration">Διάρκεια:</label>
+    <select id="duration">
+      <option value="12">12 μήνες</option>
+      <option value="24" selected>24 μήνες</option>
+      <option value="36">36 μήνες</option>
+      <option value="48">48 μήνες</option>
+    </select>
+    <button id="scrape-btn">Scrape Instacar.gr</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="meta"></div>
+
+  <table id="results">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Brand</th>
+        <th>Model</th>
+        <th>Fuel</th>
+        <th id="sort-price">Monthly (€)</th>
+        <th>Duration</th>
+        <th>km/yr</th>
+        <th>Insurance</th>
+        <th>Maintenance</th>
+        <th>Tyres</th>
+        <th>CO2</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+
+  <script src="/app.js"></script>
+</body>
+</html>
