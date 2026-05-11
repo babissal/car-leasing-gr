@@ -5,9 +5,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const metaEl = document.getElementById('meta')
   const tbody = document.getElementById('results-body')
   const sortPriceTh = document.getElementById('sort-price')
+  const progressEl = document.getElementById('progress-list')
 
   let lastOffers = []
   const sortState = { column: 'monthlyPrice', dir: 'asc' }
+  let totalCount = 0
 
   scrapeBtn.addEventListener('click', async () => {
     const duration = parseInt(durationSelect.value, 10)
@@ -92,5 +94,27 @@ document.addEventListener('DOMContentLoaded', () => {
       ].join('')
       tbody.appendChild(tr)
     })
+  }
+
+  function setSourceStatus(name, status, count, error) {
+    let span = progressEl.querySelector(`[data-source="${name}"]`)
+    if (!span) {
+      span = document.createElement('span')
+      span.dataset.source = name
+      progressEl.appendChild(span)
+    }
+    span.classList.remove('src-running', 'src-done', 'src-error')
+    span.classList.add(`src-${status}`)
+    if (status === 'running') span.textContent = `${name}: Scraping…`
+    else if (status === 'done') span.textContent = `${name}: ✓ ${count} offers`
+    else if (status === 'error') span.textContent = `${name}: ✗ ${error || 'Failed'}`
+    else span.textContent = `${name}: ${status}`
+  }
+
+  function updateMeta(data) {
+    const time = data.scrapedAt
+      ? new Date(data.scrapedAt).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
+      : '—'
+    metaEl.textContent = `Last updated: ${time} · ${data.count} offers total`
   }
 })
