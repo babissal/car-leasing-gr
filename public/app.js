@@ -11,51 +11,50 @@ document.addEventListener('DOMContentLoaded', () => {
   const sortState = { column: 'monthlyPrice', dir: 'asc' }
   let totalCount = 0
 
-  scrapeBtn.addEventListener('click', async () => {
+  scrapeBtn.addEventListener('click', () => {
     const duration = parseInt(durationSelect.value, 10)
+
     scrapeBtn.disabled = true
-    scrapeBtn.textContent = 'Scraping all sites…'
+    scrapeBtn.textContent = 'Scraping…'
     statusEl.textContent = ''
     statusEl.style.color = '#c00'
     tbody.innerHTML = ''
-    metaEl.textContent = 'Running scrapers in parallel — this may take 60–120 seconds…'
+    metaEl.textContent = ''
+    progressEl.innerHTML = ''
 
-    try {
-      const response = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration, advancePayment: 0 })
-      })
+    ;['Instacar', 'Spotawheel', 'ExecutiveLease', 'Ayvens', 'EasyRental'].forEach(name => {
+      setSourceStatus(name, 'running')
+    })
 
-      const data = await response.json()
+    const es = new EventSource(`/api/scrape-stream?duration=${duration}&advancePayment=0`)
 
-      if (!response.ok) {
-        statusEl.textContent = 'Error: ' + (data.error || response.statusText)
-        metaEl.textContent = ''
-        return
-      }
+    es.addEventListener('progress', (e) => {
+      const { source, status, count, error } = JSON.parse(e.data)
+      setSourceStatus(source, status, count, error)
+    })
 
+    es.addEventListener('done', (e) => {
+      es.close()
+      const data = JSON.parse(e.data)
+      totalCount = data.count || 0
+      lastOffers = data.offers || []
+      sortState.dir = 'asc'
+      sortPriceTh.textContent = 'Monthly (€) ↑'
+      renderOffers(lastOffers)
+      updateMeta(data)
       if (data.errors && data.errors.length > 0) {
         statusEl.style.color = '#c60'
         statusEl.textContent = 'Partial errors: ' + data.errors.join(' | ')
       } else {
         statusEl.textContent = ''
       }
+      scrapeBtn.disabled = false
+      scrapeBtn.textContent = 'Scrape All Sites'
+    })
 
-      lastOffers = data.offers || []
-      sortState.dir = 'asc'
-      sortPriceTh.textContent = 'Monthly (€) ↑'
-      renderOffers(lastOffers)
-
-      if (data.scrapedAt) {
-        const time = new Date(data.scrapedAt).toLocaleTimeString('el-GR')
-        const sources = [...new Set(lastOffers.map(o => o.source))].join(', ')
-        metaEl.textContent = `${data.count ?? lastOffers.length} offers from: ${sources || '—'} · ${time}`
-      }
-    } catch (err) {
-      statusEl.textContent = 'Network error — is the server running?'
-      metaEl.textContent = ''
-    } finally {
+    es.onerror = () => {
+      es.close()
+      statusEl.textContent = 'Connection error — scrape may have failed'
       scrapeBtn.disabled = false
       scrapeBtn.textContent = 'Scrape All Sites'
     }
