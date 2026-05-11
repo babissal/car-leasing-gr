@@ -87,10 +87,6 @@ async function scrape({ duration, advancePayment = 0 }) {
       await addJitter(300, 700)
     }
 
-    if (offers.length === 0) {
-      throw new Error(`Instacar: scrape returned 0 offers for duration=${duration} — possible site structure change or block`)
-    }
-
     console.log(`[Instacar] Returning ${offers.length} valid offers`)
     return offers
   } finally {

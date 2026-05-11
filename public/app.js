@@ -12,10 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
   scrapeBtn.addEventListener('click', async () => {
     const duration = parseInt(durationSelect.value, 10)
     scrapeBtn.disabled = true
-    scrapeBtn.textContent = 'Scraping...'
+    scrapeBtn.textContent = 'Scraping all sites…'
     statusEl.textContent = ''
+    statusEl.style.color = '#c00'
     tbody.innerHTML = ''
-    metaEl.textContent = ''
+    metaEl.textContent = 'Running scrapers in parallel — this may take 60–120 seconds…'
 
     try {
       const response = await fetch('/api/scrape', {
@@ -28,11 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         statusEl.textContent = 'Error: ' + (data.error || response.statusText)
+        metaEl.textContent = ''
         return
       }
 
       if (data.errors && data.errors.length > 0) {
-        statusEl.textContent = 'Warning: ' + data.errors.join(', ')
+        statusEl.style.color = '#c60'
+        statusEl.textContent = 'Partial errors: ' + data.errors.join(' | ')
+      } else {
+        statusEl.textContent = ''
       }
 
       lastOffers = data.offers || []
@@ -42,13 +47,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data.scrapedAt) {
         const time = new Date(data.scrapedAt).toLocaleTimeString('el-GR')
-        metaEl.textContent = `Showing ${data.count ?? lastOffers.length} offers · Last scraped: ${time}`
+        const sources = [...new Set(lastOffers.map(o => o.source))].join(', ')
+        metaEl.textContent = `${data.count ?? lastOffers.length} offers from: ${sources || '—'} · ${time}`
       }
     } catch (err) {
       statusEl.textContent = 'Network error — is the server running?'
+      metaEl.textContent = ''
     } finally {
       scrapeBtn.disabled = false
-      scrapeBtn.textContent = 'Scrape Instacar.gr'
+      scrapeBtn.textContent = 'Scrape All Sites'
     }
   })
 
@@ -59,31 +66,30 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 
   function renderOffers(offers) {
-    const sorted = [...offers].sort((a, b) => {
-      return sortState.dir === 'asc'
-        ? a.monthlyPrice - b.monthlyPrice
-        : b.monthlyPrice - a.monthlyPrice
-    })
+    const sorted = [...offers].sort((a, b) =>
+      sortState.dir === 'asc' ? a.monthlyPrice - b.monthlyPrice : b.monthlyPrice - a.monthlyPrice
+    )
 
     tbody.innerHTML = ''
     sorted.forEach((offer, i) => {
       const tr = document.createElement('tr')
+      const sourceLabel = offer.sourceUrl
+        ? `<a href="${offer.sourceUrl}" target="_blank" rel="noopener">${offer.source} ↗</a>`
+        : (offer.source || '—')
       tr.innerHTML = [
-        i + 1,
-        offer.brand || '—',
-        offer.model || '—',
-        offer.fuelType || '—',
-        '€' + (offer.monthlyPrice || 0).toLocaleString('el-GR', { minimumFractionDigits: 0 }),
-        (offer.durationMonths || '—') + ' μήνες',
-        offer.kmPerYear ? offer.kmPerYear.toLocaleString('el-GR') : '—',
-        offer.servicesIncluded && offer.servicesIncluded.insurance ? '✓' : '✗',
-        offer.servicesIncluded && offer.servicesIncluded.maintenance ? '✓' : '✗',
-        offer.servicesIncluded && offer.servicesIncluded.tyres ? '✓' : '✗',
-        offer.co2gKm !== null && offer.co2gKm !== undefined ? offer.co2gKm + ' g/km' : 'N/A',
-        offer.sourceUrl
-          ? `<a href="${offer.sourceUrl}" target="_blank" rel="noopener">Instacar ↗</a>`
-          : '—'
-      ].map((cell, idx) => idx === 11 ? `<td>${cell}</td>` : `<td>${cell}</td>`).join('')
+        `<td>${i + 1}</td>`,
+        `<td>${offer.brand || '—'}</td>`,
+        `<td>${offer.model || '—'}</td>`,
+        `<td>${offer.fuelType || '—'}</td>`,
+        `<td>€${(offer.monthlyPrice || 0).toLocaleString('el-GR', { minimumFractionDigits: 0 })}</td>`,
+        `<td>${(offer.durationMonths || '—') + ' μήνες'}</td>`,
+        `<td>${offer.kmPerYear ? offer.kmPerYear.toLocaleString('el-GR') : '—'}</td>`,
+        `<td>${offer.servicesIncluded?.insurance ? '✓' : '✗'}</td>`,
+        `<td>${offer.servicesIncluded?.maintenance ? '✓' : '✗'}</td>`,
+        `<td>${offer.servicesIncluded?.tyres ? '✓' : '✗'}</td>`,
+        `<td>${offer.co2gKm != null ? offer.co2gKm + ' g/km' : 'N/A'}</td>`,
+        `<td>${sourceLabel}</td>`,
+      ].join('')
       tbody.appendChild(tr)
     })
   }
