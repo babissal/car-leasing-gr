@@ -19,19 +19,34 @@ function parseCard(cardText) {
 
   const brandModelLine = cleaned[0]
   const fuelLine = cleaned.find(l => /βενζίν|diesel|hybrid|ηλεκτρ/i.test(l)) || ''
-  const priceLine = cleaned.find(l => /^\d+€$/.test(l))
 
-  if (!priceLine) return null
+  // Collect all money amounts on the card and take the largest —
+  // the monthly lease price is always larger than deposit/fee amounts shown alongside it.
+  // EasyRental displays prices VAT-included.
+  const priceNums = cleaned
+    .filter(l => /^\d+\s*€/.test(l))
+    .map(l => parseInt(l.replace(/[^\d]/g, ''), 10))
+    .filter(n => n > 0)
+  if (priceNums.length === 0) return null
 
-  const priceNum = parseInt(priceLine.replace('€', ''), 10)
-  if (!priceNum) return null
+  const priceNum = Math.max(...priceNums)
+
+  // Extract duration from card text (e.g. "24 μήνες", "48 μήνες")
+  const durationLine = cleaned.find(l => /\d+\s*μήνε/i.test(l))
+  const durationMatch = durationLine ? durationLine.match(/(\d+)/) : null
+  const durationMonths = durationMatch ? parseInt(durationMatch[1]) : DURATION_MONTHS
+
+  // Extract km/year from card text (e.g. "15.000 χλμ", "20.000 km")
+  const kmLine = cleaned.find(l => /χλμ|km/i.test(l))
+  const kmMatch = kmLine ? kmLine.match(/([\d.,]+)/) : null
+  const kmPerYear = kmMatch ? parseInt(kmMatch[1].replace(/\./g, '').replace(',', '')) : KM_PER_YEAR
 
   const parts = brandModelLine.split(' ')
   const brand = parts[0] || 'Unknown'
   const model = parts.slice(1).join(' ') || ''
   const fuelType = normalizeFuelType(fuelLine)
 
-  return { brand, model, fuelType, priceNum }
+  return { brand, model, fuelType, priceNum, durationMonths, kmPerYear }
 }
 
 function extractCardsFromPage(page) {
@@ -46,9 +61,7 @@ function extractCardsFromPage(page) {
   })
 }
 
-async function scrape({ duration, advancePayment = 0 }) {
-  // EasyRental only has 48-month offers
-  if (duration !== DURATION_MONTHS) return []
+async function scrape() {
 
   const { browser, page } = await launchBrowser()
   try {
@@ -59,6 +72,21 @@ async function scrape({ duration, advancePayment = 0 }) {
     try {
       const btn = await page.$('button:has-text("Αποδοχή"), button:has-text("Αποδοχή όλων"), button:has-text("Accept")')
       if (btn) { await btn.click(); await page.waitForTimeout(800) }
+    } catch {}
+
+    // Select "Με ΦΠΑ" (prices with VAT) so all card prices are VAT-inclusive
+    try {
+      const clicked = await page.evaluate(() => {
+        for (const el of document.querySelectorAll('input[type=radio], label, span, div')) {
+          const t = el.textContent?.trim()
+          if (t === 'Με ΦΠΑ' || t === 'με ΦΠΑ' || t === 'ΜΕ ΦΠΑ') {
+            el.click()
+            return true
+          }
+        }
+        return false
+      })
+      if (clicked) await page.waitForTimeout(1000)
     } catch {}
 
     // Get total page count from JetSmartFilters pagination
@@ -80,12 +108,12 @@ async function scrape({ duration, advancePayment = 0 }) {
       if (url) seenUrls.add(url)
       const parsed = parseCard(text)
       if (!parsed) continue
-      const monthlyPrice = normalizePrice(parsed.priceNum, false)
+      const monthlyPrice = normalizePrice(parsed.priceNum, true)
       if (!monthlyPrice) continue
       allOffers.push(createOffer({
         source: SOURCE, sourceUrl: url || BASE_URL, brand: parsed.brand, model: parsed.model,
         carType: 'Passenger', fuelType: parsed.fuelType, monthlyPrice, advancePayment: 0,
-        durationMonths: DURATION_MONTHS, kmPerYear: KM_PER_YEAR,
+        durationMonths: parsed.durationMonths, kmPerYear: parsed.kmPerYear,
         servicesIncluded: { insurance: true, maintenance: true, tyres: true },
         co2gKm: null, scrapedAt,
       }))
@@ -115,12 +143,12 @@ async function scrape({ duration, advancePayment = 0 }) {
           if (url) seenUrls.add(url)
           const parsed = parseCard(text)
           if (!parsed) continue
-          const monthlyPrice = normalizePrice(parsed.priceNum, false)
+          const monthlyPrice = normalizePrice(parsed.priceNum, true)
           if (!monthlyPrice) continue
           allOffers.push(createOffer({
             source: SOURCE, sourceUrl: url || BASE_URL, brand: parsed.brand, model: parsed.model,
             carType: 'Passenger', fuelType: parsed.fuelType, monthlyPrice, advancePayment: 0,
-            durationMonths: DURATION_MONTHS, kmPerYear: KM_PER_YEAR,
+            durationMonths: parsed.durationMonths, kmPerYear: parsed.kmPerYear,
             servicesIncluded: { insurance: true, maintenance: true, tyres: true },
             co2gKm: null, scrapedAt,
           }))

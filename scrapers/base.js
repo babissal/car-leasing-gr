@@ -1,9 +1,11 @@
-const { chromium } = require('playwright')
+const { chromium } = require('playwright-extra')
+const StealthPlugin = require('puppeteer-extra-plugin-stealth')
+chromium.use(StealthPlugin())
 
 async function launchBrowser() {
   const browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   })
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',

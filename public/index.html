@@ -6,8 +6,14 @@
   <title>Car Leasing Aggregator</title>
   <style>
     body { font-family: sans-serif; max-width: 1400px; margin: 0 auto; padding: 16px; }
-    .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    #status { margin-bottom: 8px; color: #c00; min-height: 1.2em; }
+    .filter-bar { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; font-size: 0.85em; }
+    .filter-checks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    #status { margin-bottom: 8px; min-height: 1.2em; }
+    #status.status-partial { color: #c60; }
+    #status.status-fatal { color: #c00; }
+    .table-placeholder { text-align: center; color: #888; padding: 24px; font-style: italic; }
+    #offer-disclaimer { margin-top: 12px; font-size: 0.82em; color: #888; }
     #meta { margin-bottom: 8px; color: #555; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
     th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; white-space: nowrap; }
@@ -27,14 +33,91 @@
   <h1>Car Leasing Aggregator</h1>
 
   <div class="filter-bar">
-    <label for="duration">Διάρκεια:</label>
-    <select id="duration">
-      <option value="12">12 μήνες</option>
-      <option value="24" selected>24 μήνες</option>
-      <option value="36">36 μήνες</option>
-      <option value="48">48 μήνες</option>
-    </select>
-    <button id="scrape-btn">Scrape All Sites</button>
+    <div class="filter-group">
+      <label for="duration">Διάρκεια</label>
+      <select id="duration">
+        <option value="0" selected>Όλες</option>
+        <option value="12">12 μήνες</option>
+        <option value="24">24 μήνες</option>
+        <option value="36">36 μήνες</option>
+        <option value="48">48 μήνες</option>
+      </select>
+    </div>
+    <button id="scrape-btn" style="align-self:flex-end; margin-bottom:2px;">Scrape All Sites</button>
+
+    <div class="filter-group">
+      <label for="filter-car-type">Car Type</label>
+      <select id="filter-car-type" multiple size="3">
+        <!-- options populated dynamically by app.js -->
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span>Fuel Type</span>
+      <div id="filter-fuel" class="filter-checks">
+        <label><input type="checkbox" id="fuel-Petrol"   value="Petrol">   Petrol</label>
+        <label><input type="checkbox" id="fuel-Diesel"   value="Diesel">   Diesel</label>
+        <label><input type="checkbox" id="fuel-Hybrid"   value="Hybrid">   Hybrid</label>
+        <label><input type="checkbox" id="fuel-PHEV"     value="PHEV">     PHEV</label>
+        <label><input type="checkbox" id="fuel-Electric" value="Electric"> Electric</label>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <span>&nbsp;</span>
+      <label>
+        <input type="checkbox" id="filter-zero-advance">
+        0 advance payment only
+      </label>
+      <label for="filter-max-advance" style="margin-top:4px;">Max advance (€)</label>
+      <input type="number" id="filter-max-advance" min="0" step="100" placeholder="Any" style="padding:5px; width:90px;">
+    </div>
+
+    <div class="filter-group">
+      <label for="filter-km">Min km/year</label>
+      <select id="filter-km">
+        <option value="">Any</option>
+        <option value="10000">10,000+</option>
+        <option value="15000">15,000+</option>
+        <option value="20000">20,000+</option>
+        <option value="25000">25,000+</option>
+        <option value="30000">30,000+</option>
+      </select>
+      <small style="color:#888;">km/year not available from all sources</small>
+    </div>
+
+    <div class="filter-group">
+      <span>Services Included</span>
+      <div class="filter-checks">
+        <label><input type="checkbox" id="filter-insurance">   Insurance</label>
+        <label><input type="checkbox" id="filter-maintenance"> Maintenance</label>
+        <label><input type="checkbox" id="filter-tyres">       Tyres</label>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label for="filter-brand-model">Brand / Model</label>
+      <input type="text" id="filter-brand-model" placeholder="e.g. Toyota RAV4" style="padding:5px; width:140px;">
+    </div>
+
+    <div class="filter-group">
+      <span>Company</span>
+      <div id="filter-company" class="filter-checks">
+        <label><input type="checkbox" value="Instacar">    Instacar</label>
+        <label><input type="checkbox" value="Spotawheel">  Spotawheel</label>
+        <label><input type="checkbox" value="ExecutiveLease"> ExecutiveLease</label>
+        <label><input type="checkbox" value="Ayvens">      Ayvens</label>
+        <label><input type="checkbox" value="EasyRental">  EasyRental</label>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <span>Body Type</span>
+      <div class="filter-checks">
+        <label><input type="checkbox" id="filter-suv"> SUV / Crossover</label>
+      </div>
+      <small style="color:#888;">Only where detected</small>
+    </div>
   </div>
 
   <div id="status"></div>
@@ -49,6 +132,7 @@
         <th>Model</th>
         <th>Fuel</th>
         <th id="sort-price">Monthly (€)</th>
+        <th>Advance (€)</th>
         <th>Duration</th>
         <th>km/yr</th>
         <th>Insurance</th>
@@ -60,6 +144,10 @@
     </thead>
     <tbody id="results-body"></tbody>
   </table>
+
+  <p id="offer-disclaimer">
+    Leasing offers change frequently. Always verify availability and current pricing directly on the source site before contacting the company.
+  </p>
 
   <script src="/app.js"></script>
 </body>

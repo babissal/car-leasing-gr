@@ -16,6 +16,50 @@ let store = { offers: [], scrapedAt: null, errors: [] }
 
 const VALID_DURATIONS = [12, 24, 36, 48]
 
+function withTimeout(promise, ms, name) {
+  let timeoutId
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${name} timed out after ${ms / 1000}s`)),
+      ms
+    )
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId))
+}
+
+async function withRetry(fn, maxRetries = 1, delayMs = 2000) {
+  let lastErr
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      if (attempt < maxRetries) {
+        console.warn(`Retry ${attempt + 1}/${maxRetries}: ${(err.message || '').slice(0, 80)}`)
+        await new Promise(r => setTimeout(r, delayMs))
+      }
+    }
+  }
+  throw lastErr
+}
+
+function categorizeError(err) {
+  const msg = (err && err.message || '').toLowerCase()
+  if (msg.includes('err_name_not_resolved') || msg.includes('err_name_resolution_failed')) {
+    return 'Site unreachable — DNS failure'
+  }
+  if (msg.includes('timed out') || msg.includes('timeout')) {
+    return 'Timed out — site too slow (5 min limit)'
+  }
+  if (msg.includes('err_aborted') || msg.includes('err_connection_reset')) {
+    return 'Connection blocked or interrupted — try again'
+  }
+  if (msg.includes('no listing') || msg.includes('0 results') || msg.includes('no offers')) {
+    return 'No offers found — site layout may have changed'
+  }
+  return `Failed: ${(err && err.message || 'Unknown error').slice(0, 80)}`
+}
+
 const SCRAPERS = [
   { name: 'Instacar', fn: scrapeInstacar },
   { name: 'Spotawheel', fn: scrapeSpotawheel },
@@ -25,19 +69,10 @@ const SCRAPERS = [
 ]
 
 app.post('/api/scrape', async (req, res) => {
-  const { duration, advancePayment = 0 } = req.body
-  const dur = parseInt(duration, 10)
-  const adv = parseInt(advancePayment, 10) || 0
-
-  if (!VALID_DURATIONS.includes(dur)) {
-    return res.status(400).json({ error: 'Invalid duration. Must be 12, 24, 36, or 48.' })
-  }
-
-  const params = { duration: dur, advancePayment: adv }
-
   const results = await Promise.allSettled(
     SCRAPERS.map(({ name, fn }) =>
-      fn(params).then(offers => ({ name, offers }))
+      withTimeout(fn(), 300000, name)
+        .then(offers => ({ name, offers }))
     )
   )
 
@@ -58,7 +93,7 @@ app.post('/api/scrape', async (req, res) => {
       allOffers.push(...valid)
     } else {
       console.error(`[${scraperName}] Failed:`, result.reason?.message)
-      errors.push(`${scraperName}: ${result.reason?.message || 'Unknown error'}`)
+      errors.push(`${scraperName}: ${categorizeError(result.reason || new Error('Unknown error'))}`)
     }
   }
 
@@ -87,21 +122,7 @@ app.get('/api/scrape-stream', async (req, res) => {
   // Step 3: Disable socket timeout for long-running scrapes
   req.socket.setTimeout(0)
 
-  // Step 4: Parse query params
-  const dur = parseInt(req.query.duration, 10)
-  const adv = parseInt(req.query.advancePayment, 10) || 0
-
-  // Step 5: Validate duration
-  if (!VALID_DURATIONS.includes(dur)) {
-    res.write(`event: error\ndata: ${JSON.stringify({ error: 'Invalid duration. Must be 12, 24, 36, or 48.' })}\n\n`)
-    res.end()
-    return
-  }
-
-  // Step 6: Build params
-  const params = { duration: dur, advancePayment: adv }
-
-  // Step 7: Track abort state
+  // Step 4: Track abort state
   let aborted = false
   req.on('close', () => { aborted = true })
 
@@ -118,18 +139,20 @@ app.get('/api/scrape-stream', async (req, res) => {
 
   // Step 10: Build scraper promises — each emits a progress event as it resolves
   const scraperPromises = SCRAPERS.map(({ name, fn }) =>
-    fn(params)
+    withTimeout(fn(), 300000, name)
       .then(offers => {
         const valid = offers.filter(o => validateOffer(o).valid)
         allOffers.push(...valid)
         if (!aborted && !res.writableEnded) {
-          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'done', count: valid.length, error: null })}\n\n`)
+          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'done', count: valid.length, error: null, offers: valid })}\n\n`)
         }
       })
       .catch(err => {
-        errors.push(`${name}: ${err.message || 'Unknown error'}`)
+        console.error(`[${name}] Failed:`, err?.message || err)
+        const userMsg = categorizeError(err)
+        errors.push(`${name}: ${userMsg}`)
         if (!aborted && !res.writableEnded) {
-          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'error', count: 0, error: err.message || 'Failed' })}\n\n`)
+          res.write(`event: progress\ndata: ${JSON.stringify({ source: name, status: 'error', count: 0, error: userMsg })}\n\n`)
         }
       })
   )
