@@ -32,17 +32,17 @@ function parseListingText(text) {
     if (!/^[A-Z0-9\s\-.,&+/()]+$/.test(modelLine)) continue
     if (!/^[A-Z\s\-&]+$/.test(brandLine) || brandLine.length < 2) continue
 
-    const specParts = specLine.split('|').map(s => s.trim())
-    const fuelType = normalizeFuelType(specParts[0] || '')
+    const fuelType = normalizeFuelType(specLine.split('|')[0] || '')
     const monthlyPrice = normalizePrice(priceMatch[1], false)
 
     if (!monthlyPrice) continue
 
-    // Extract duration and km from spec line (e.g. "Hybrid | 36 μήνες | 15.000 χλμ")
-    const durMatch2 = (specParts[1] || '').match(/(\d+)/)
+    // Extract duration: look specifically for "NN μήν" pattern (2+ digit number)
+    const durMatch2 = specLine.match(/(\d{2,})\s*μήν/i)
     const specDuration = durMatch2 ? parseInt(durMatch2[1]) : null
 
-    const kmMatch2 = (specParts[2] || '').match(/([\d.,]+)/)
+    // Extract km: look for number followed by χλμ or km
+    const kmMatch2 = specLine.match(/([\d.]+)\s*(?:χλμ|km)/i)
     const specKm = kmMatch2 ? parseInt(kmMatch2[1].replace(/\./g, '')) : null
 
     const toTitle = s => s.split(' ')
